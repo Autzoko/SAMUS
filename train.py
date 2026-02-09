@@ -131,7 +131,7 @@ def main():
             train_loss.backward()
             optimizer.step()
             train_losses += train_loss.item()
-            print(train_loss)
+            print(f'\r  batch [{batch_idx+1}/{len(trainloader)}] loss: {train_loss.item():.4f}', end='', flush=True)
             # ------------------------------------------- adjust the learning rate when needed-----------------------------------------
             if args.warmup and iter_num < args.warmup_period:
                 lr_ = args.base_lr * ((iter_num + 1) / args.warmup_period)
@@ -147,7 +147,7 @@ def main():
             iter_num = iter_num + 1
 
         #  -------------------------------------------------- log the train progress --------------------------------------------------
-        print('epoch [{}/{}], train loss:{:.4f}'.format(epoch, opt.epochs, train_losses / (batch_idx + 1)))
+        print(f'\repoch [{epoch}/{opt.epochs}], train loss: {train_losses / (batch_idx + 1):.4f}, lr: {optimizer.param_groups[0]["lr"]:.6f}')
         if args.keep_log:
             TensorWriter.add_scalar('train_loss', train_losses / (batch_idx + 1), epoch)
             TensorWriter.add_scalar('learning rate', optimizer.state_dict()['param_groups'][0]['lr'], epoch)
