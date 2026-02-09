@@ -19,30 +19,31 @@ conda create -n SAMUS python=3.8
 conda activate SAMUS
 ```
 
-Install PyTorch (CUDA 11.8):
+**Step A — Install PyTorch first** (must be done before `pip install -r requirements.txt`):
 
 ```bash
-pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118
+# CUDA 11.8
+pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 For other hardware:
 
 ```bash
 # CPU only (macOS / no GPU)
-pip install torch torchvision
+pip install torch torchvision torchaudio
 
 # Apple Silicon (MPS)
-pip install torch torchvision
+pip install torch torchvision torchaudio
 ```
 
-Install dependencies:
+**Step B — Install remaining dependencies:**
 
 ```bash
 cd "/Volumes/Autzoko/MS Thesis/SAMUS"
 pip install -r requirements.txt
 ```
 
-> **Note:** If `thop` is not installed (used in `test.py` but not in our inference script), you can ignore it. Our inference script does not depend on `thop`.
+> **Note:** PyTorch is deliberately **not** listed in `requirements.txt` because CUDA wheels require the special `--index-url` flag. Always install PyTorch first (Step A), then run `pip install -r requirements.txt` (Step B).
 
 ### 2. Download Pre-trained Checkpoint
 
