@@ -85,7 +85,7 @@ def main():
 
     model.to(device)
     if opt.pre_trained:
-        checkpoint = torch.load(opt.load_path)
+        checkpoint = torch.load(opt.load_path, map_location="cpu")
         new_state_dict = {}
         for k,v in checkpoint.items():
             if k[:7] == 'module.':
