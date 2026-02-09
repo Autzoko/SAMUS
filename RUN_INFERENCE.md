@@ -1,12 +1,12 @@
-# AutoSAMUS Inference on BUSI & BUS Datasets
+# AutoSAMUS Inference on BUSI, BUS & BUSBRA Datasets
 
-Complete guide to run AutoSAMUS inference on the **BUSI** (Breast Ultrasound Images) and **BUS** (Dataset B) datasets.
+Complete guide to run AutoSAMUS inference on the **BUSI** (Breast Ultrasound Images), **BUS** (Dataset B), and **BUSBRA** (Breast Ultrasound Dataset BRA) datasets.
 
 ## Overview
 
 | Stage | Script | What it does |
 |-------|--------|-------------|
-| 1. Preprocess | `preprocess_datasets.py` | Converts raw BUSI/BUS into SAMUS format |
+| 1. Preprocess | `preprocess_datasets.py` | Converts raw BUSI/BUS/BUSBRA into SAMUS format |
 | 2. Checkpoint | (manual download) | Download the pre-trained AutoSAMUS weights |
 | 3. Inference | `inference_autosamus.py` | Runs AutoSAMUS, evaluates, and visualizes |
 
@@ -64,14 +64,15 @@ mv ~/Downloads/SAMUS.pth checkpoints/AutoSAMUS.pth
 
 ## Step 1: Preprocess Datasets
 
-Convert the raw BUSI and BUS datasets into the SAMUS-compatible format:
+Convert the raw datasets into the SAMUS-compatible format:
 
 ```bash
 cd "/Volumes/Autzoko/MS Thesis/SAMUS"
 
 python preprocess_datasets.py \
-    --busi_dir "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUSI" \
-    --bus_dir  "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUS" \
+    --busi_dir   "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUSI" \
+    --bus_dir    "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUS" \
+    --busbra_dir "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUSBRA" \
     --output_dir ./data/processed
 ```
 
@@ -80,25 +81,32 @@ This creates:
 ```
 data/processed/
 ├── MainPatient/
-│   ├── class.json                    # {"Breast-BUSI-Ext": 2, "Breast-BUS-Ext": 2}
-│   ├── test.txt                      # Combined test split
-│   ├── test-Breast-BUSI-Ext.txt      # BUSI test split
-│   ├── test-Breast-BUS-Ext.txt       # BUS test split
-│   ├── train.txt / val.txt           # Empty (inference only)
-│   └── train-*.txt / val-*.txt       # Empty (inference only)
+│   ├── class.json                      # {"Breast-BUSI-Ext": 2, "Breast-BUS-Ext": 2, "Breast-BUSBRA-Ext": 2}
+│   ├── test.txt                        # Combined test split
+│   ├── test-Breast-BUSI-Ext.txt        # BUSI test split
+│   ├── test-Breast-BUS-Ext.txt         # BUS test split
+│   ├── test-Breast-BUSBRA-Ext.txt      # BUSBRA test split
+│   ├── train.txt / val.txt             # Empty (inference only)
+│   └── train-*.txt / val-*.txt         # Empty (inference only)
 ├── Breast-BUSI-Ext/
 │   ├── img/     # Grayscale PNGs
 │   └── label/   # Binary mask PNGs (0/1)
-└── Breast-BUS-Ext/
+├── Breast-BUS-Ext/
+│   ├── img/
+│   └── label/
+└── Breast-BUSBRA-Ext/
     ├── img/
     └── label/
 ```
 
 **What the preprocessor does:**
-- **BUSI:** Reads images from `benign/`, `malignant/`, `normal/` folders; merges multiple mask files (`_mask.png`, `_mask_1.png`, etc.) via union; converts to grayscale; binarizes masks to 0/1; skips `normal` images with empty masks.
+- **BUSI:** Reads images from `benign/` and `malignant/` folders only (the `normal` folder is excluded entirely since those are no-lesion samples); merges multiple mask files (`_mask.png`, `_mask_1.png`, etc.) via union; converts to grayscale; binarizes masks to 0/1.
 - **BUS:** Reads from `original/` and `GT/`; converts 0/255 masks to 0/1.
+- **BUSBRA:** Reads from `Images/` and `Masks/`; pairs `bus_XXXX-x.png` with `mask_XXXX-x.png`; binarizes masks to 0/1.
 
 ## Step 2: Run Inference
+
+Each dataset is run independently via the `--dataset` flag.
 
 ### On BUSI
 
@@ -124,6 +132,18 @@ python inference_autosamus.py \
     --visualize
 ```
 
+### On BUSBRA
+
+```bash
+python inference_autosamus.py \
+    --data_path ./data/processed \
+    --dataset Breast-BUSBRA-Ext \
+    --checkpoint ./checkpoints/AutoSAMUS.pth \
+    --output_dir ./results \
+    --batch_size 8 \
+    --visualize
+```
+
 ### Run on CPU (if no GPU available)
 
 ```bash
@@ -141,7 +161,7 @@ python inference_autosamus.py \
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--data_path` | `./data/processed` | Root of preprocessed data |
-| `--dataset` | (required) | `Breast-BUSI-Ext` or `Breast-BUS-Ext` |
+| `--dataset` | (required) | `Breast-BUSI-Ext`, `Breast-BUS-Ext`, or `Breast-BUSBRA-Ext` |
 | `--checkpoint` | (required) | Path to `.pth` file |
 | `--output_dir` | `./results` | Where to save outputs |
 | `--batch_size` | `8` | Batch size |
@@ -163,7 +183,9 @@ results/
 │   └── vis/
 │       ├── overlay/           # [Original | GT | Prediction] images
 │       └── pred_masks/        # Raw binary prediction masks (0/255)
-└── Breast-BUS-Ext/
+├── Breast-BUS-Ext/
+│   └── ...
+└── Breast-BUSBRA-Ext/
     └── ...
 ```
 
@@ -208,8 +230,9 @@ conda activate SAMUS
 
 # Step 1: Preprocess
 python preprocess_datasets.py \
-    --busi_dir "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUSI" \
-    --bus_dir  "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUS" \
+    --busi_dir   "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUSI" \
+    --bus_dir    "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUS" \
+    --busbra_dir "/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUSBRA" \
     --output_dir ./data/processed
 
 # Step 2: Inference on BUSI
@@ -224,6 +247,14 @@ python inference_autosamus.py \
 python inference_autosamus.py \
     --data_path ./data/processed \
     --dataset Breast-BUS-Ext \
+    --checkpoint ./checkpoints/AutoSAMUS.pth \
+    --output_dir ./results \
+    --visualize
+
+# Step 4: Inference on BUSBRA
+python inference_autosamus.py \
+    --data_path ./data/processed \
+    --dataset Breast-BUSBRA-Ext \
     --checkpoint ./checkpoints/AutoSAMUS.pth \
     --output_dir ./results \
     --visualize

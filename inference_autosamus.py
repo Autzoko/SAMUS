@@ -232,7 +232,7 @@ def main():
     parser.add_argument("--data_path", type=str, default="./data/processed",
                         help="Root of the SAMUS-formatted dataset")
     parser.add_argument("--dataset", type=str, required=True,
-                        choices=["Breast-BUSI-Ext", "Breast-BUS-Ext"],
+                        choices=["Breast-BUSI-Ext", "Breast-BUS-Ext", "Breast-BUSBRA-Ext"],
                         help="Which dataset to run inference on")
     parser.add_argument("--checkpoint", type=str, required=True,
                         help="Path to the AutoSAMUS .pth checkpoint")

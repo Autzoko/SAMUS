@@ -1,5 +1,5 @@
 """
-Preprocess BUSI and BUS datasets into the SAMUS-compatible format.
+Preprocess BUSI, BUS, and BUSBRA datasets into the SAMUS-compatible format.
 
 SAMUS expects:
     dataset_root/
@@ -11,7 +11,7 @@ SAMUS expects:
     │   ├── img/   *.png  (grayscale)
     │   └── label/ *.png  (binary mask, 0/1 pixel values)
 
-This script converts the raw BUSI and BUS datasets into that layout.
+This script converts the raw BUSI, BUS, and BUSBRA datasets into that layout.
 
 BUSI raw format:
     BUSI/{benign,malignant,normal}/
@@ -20,6 +20,10 @@ BUSI raw format:
 BUS (Dataset B) raw format:
     BUS/original/*.png   (grayscale images)
     BUS/GT/*.png         (grayscale masks, pixel values 0/255)
+
+BUSBRA raw format:
+    BUSBRA/Images/bus_XXXX-{l,r,s}.png   (grayscale images)
+    BUSBRA/Masks/mask_XXXX-{l,r,s}.png   (binary masks)
 """
 
 import os
@@ -156,6 +160,57 @@ def process_bus(raw_dir, out_root, test_ratio=1.0):
     return dataset_name, entries
 
 
+def process_busbra(raw_dir, out_root, test_ratio=1.0):
+    """
+    Convert the raw BUSBRA dataset.
+    Images: BUSBRA/Images/bus_XXXX-{l,r,s}.png  (grayscale)
+    Masks:  BUSBRA/Masks/mask_XXXX-{l,r,s}.png  (binary, 0/1 or 0/255)
+    Pairing: bus_XXXX-x.png <-> mask_XXXX-x.png  (replace 'bus_' with 'mask_')
+    """
+    dataset_name = "Breast-BUSBRA-Ext"
+    img_out = os.path.join(out_root, dataset_name, "img")
+    label_out = os.path.join(out_root, dataset_name, "label")
+    os.makedirs(img_out, exist_ok=True)
+    os.makedirs(label_out, exist_ok=True)
+
+    entries = []
+    img_dir = os.path.join(raw_dir, "Images")
+    gt_dir = os.path.join(raw_dir, "Masks")
+
+    if not os.path.isdir(img_dir) or not os.path.isdir(gt_dir):
+        print(f"  [ERROR] BUSBRA directories not found: {img_dir} or {gt_dir}")
+        return dataset_name, entries
+
+    # Only pick files that start with "bus_" to skip any stray files
+    img_files = sorted([f for f in os.listdir(img_dir)
+                        if f.startswith("bus_") and f.endswith(".png")])
+
+    for f in img_files:
+        # Derive mask filename: bus_XXXX-x.png -> mask_XXXX-x.png
+        mask_name = "mask_" + f[4:]  # strip "bus_", prepend "mask_"
+        gt_file = os.path.join(gt_dir, mask_name)
+        if not os.path.isfile(gt_file):
+            print(f"  [WARN] No mask for {f} (expected {mask_name}), skipping.")
+            continue
+
+        img = cv2.imread(os.path.join(img_dir, f), cv2.IMREAD_GRAYSCALE)
+        mask = cv2.imread(gt_file, cv2.IMREAD_GRAYSCALE)
+        if img is None or mask is None:
+            continue
+
+        # Binarize mask
+        mask[mask > 0] = 1
+
+        # Use original stem as clean name (e.g. bus_0001-l)
+        clean_name = f[:-4]
+        cv2.imwrite(os.path.join(img_out, clean_name + ".png"), img)
+        cv2.imwrite(os.path.join(label_out, clean_name + ".png"), mask)
+        entries.append(clean_name)
+
+    print(f"  BUSBRA: {len(entries)} images processed -> {dataset_name}/")
+    return dataset_name, entries
+
+
 def write_split_files(out_root, dataset_name, entries, train_ratio=0.0, val_ratio=0.0):
     """
     Write MainPatient split files.
@@ -194,13 +249,16 @@ def write_split_files(out_root, dataset_name, entries, train_ratio=0.0, val_rati
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Preprocess BUSI/BUS datasets for SAMUS")
+    parser = argparse.ArgumentParser(description="Preprocess BUSI/BUS/BUSBRA datasets for SAMUS")
     parser.add_argument("--busi_dir", type=str,
                         default="/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUSI",
                         help="Path to raw BUSI dataset")
     parser.add_argument("--bus_dir", type=str,
                         default="/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUS",
                         help="Path to raw BUS dataset")
+    parser.add_argument("--busbra_dir", type=str,
+                        default="/Users/langtian/Desktop/NYU/MS Thesis/3D SAM Foundation Model/Med3D/Data/BUSBRA",
+                        help="Path to raw BUSBRA dataset")
     parser.add_argument("--output_dir", type=str,
                         default="./data/processed",
                         help="Output directory for SAMUS-formatted data")
@@ -218,25 +276,36 @@ def main():
 
     # Process BUSI
     if os.path.isdir(args.busi_dir):
-        print(f"\n[1/2] Processing BUSI from: {args.busi_dir}")
+        print(f"\n[1/3] Processing BUSI from: {args.busi_dir}")
         ds_name, entries = process_busi(args.busi_dir, out_root)
         if entries:
             class_dict[ds_name] = 2  # binary: background + foreground
             splits = write_split_files(out_root, ds_name, entries)
             all_test[ds_name] = splits["test"]
     else:
-        print(f"\n[1/2] BUSI directory not found: {args.busi_dir}, skipping.")
+        print(f"\n[1/3] BUSI directory not found: {args.busi_dir}, skipping.")
 
     # Process BUS
     if os.path.isdir(args.bus_dir):
-        print(f"\n[2/2] Processing BUS from: {args.bus_dir}")
+        print(f"\n[2/3] Processing BUS from: {args.bus_dir}")
         ds_name, entries = process_bus(args.bus_dir, out_root)
         if entries:
             class_dict[ds_name] = 2
             splits = write_split_files(out_root, ds_name, entries)
             all_test[ds_name] = splits["test"]
     else:
-        print(f"\n[2/2] BUS directory not found: {args.bus_dir}, skipping.")
+        print(f"\n[2/3] BUS directory not found: {args.bus_dir}, skipping.")
+
+    # Process BUSBRA
+    if os.path.isdir(args.busbra_dir):
+        print(f"\n[3/3] Processing BUSBRA from: {args.busbra_dir}")
+        ds_name, entries = process_busbra(args.busbra_dir, out_root)
+        if entries:
+            class_dict[ds_name] = 2
+            splits = write_split_files(out_root, ds_name, entries)
+            all_test[ds_name] = splits["test"]
+    else:
+        print(f"\n[3/3] BUSBRA directory not found: {args.busbra_dir}, skipping.")
 
     # Write class.json
     main_dir = os.path.join(out_root, "MainPatient")
