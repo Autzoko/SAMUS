@@ -19,12 +19,15 @@ conda create -n SAMUS python=3.8
 conda activate SAMUS
 ```
 
-Install PyTorch (choose one based on your hardware):
+Install PyTorch (CUDA 11.8):
 
 ```bash
-# CUDA 11.1
-pip install torch==1.8.0+cu111 torchvision==0.9.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --index-url https://download.pytorch.org/whl/cu118
+```
 
+For other hardware:
+
+```bash
 # CPU only (macOS / no GPU)
 pip install torch torchvision
 

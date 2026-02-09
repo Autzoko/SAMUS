@@ -36,7 +36,7 @@ def process_busi(raw_dir, out_root, test_ratio=1.0):
     """
     Convert the raw BUSI dataset.
     - Merges multiple mask files (_mask.png, _mask_1.png, ...) via union.
-    - Skips 'normal' images that have empty masks (all zeros).
+    - Excludes 'normal' category entirely (no-lesion samples).
     - Renames images to a clean sequential format: benignXXXX, malignantXXXX.
     - If test_ratio==1.0, ALL images go into the test split (inference-only).
     """
@@ -49,7 +49,8 @@ def process_busi(raw_dir, out_root, test_ratio=1.0):
     entries = []  # (clean_name,)
     idx = 0
 
-    for category in ["benign", "malignant", "normal"]:
+    # Only include benign and malignant; skip normal (no-lesion samples)
+    for category in ["benign", "malignant"]:
         cat_dir = os.path.join(raw_dir, category)
         if not os.path.isdir(cat_dir):
             print(f"  [WARN] Category dir not found: {cat_dir}, skipping.")
@@ -95,10 +96,6 @@ def process_busi(raw_dir, out_root, test_ratio=1.0):
 
             # Binarize: anything > 0 becomes 1
             merged_mask[merged_mask > 0] = 1
-
-            # Skip normal images with completely empty masks
-            if category == "normal" and merged_mask.sum() == 0:
-                continue
 
             # Read image as grayscale
             img = cv2.imread(img_file, cv2.IMREAD_GRAYSCALE)
