@@ -31,6 +31,7 @@ import sys
 import json
 import shutil
 import argparse
+import random
 import cv2
 import numpy as np
 from glob import glob
@@ -262,26 +263,41 @@ def main():
     parser.add_argument("--output_dir", type=str,
                         default="./data/processed",
                         help="Output directory for SAMUS-formatted data")
+    parser.add_argument("--train_ratio", type=float, default=0.7,
+                        help="Fraction of data for training (default: 0.7, set to 0.0 for inference-only)")
+    parser.add_argument("--val_ratio", type=float, default=0.15,
+                        help="Fraction of data for validation (default: 0.15, set to 0.0 for inference-only)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed for reproducible split shuffling (default: 42)")
     args = parser.parse_args()
+
+    assert args.train_ratio + args.val_ratio <= 1.0, \
+        f"train_ratio + val_ratio must be <= 1.0, got {args.train_ratio + args.val_ratio}"
 
     out_root = args.output_dir
     os.makedirs(out_root, exist_ok=True)
 
     print("=" * 60)
-    print("Preprocessing datasets for SAMUS/AutoSAMUS inference")
+    print("Preprocessing datasets for SAMUS/AutoSAMUS")
+    print(f"  train/val/test ratio: {args.train_ratio}/{args.val_ratio}/{1 - args.train_ratio - args.val_ratio:.2f}")
+    print(f"  shuffle seed: {args.seed}")
     print("=" * 60)
 
+    rng = random.Random(args.seed)
     class_dict = {}
-    all_test = {}
+    all_splits = {}
 
     # Process BUSI
     if os.path.isdir(args.busi_dir):
         print(f"\n[1/3] Processing BUSI from: {args.busi_dir}")
         ds_name, entries = process_busi(args.busi_dir, out_root)
         if entries:
+            rng.shuffle(entries)
             class_dict[ds_name] = 2  # binary: background + foreground
-            splits = write_split_files(out_root, ds_name, entries)
-            all_test[ds_name] = splits["test"]
+            splits = write_split_files(out_root, ds_name, entries,
+                                       train_ratio=args.train_ratio,
+                                       val_ratio=args.val_ratio)
+            all_splits[ds_name] = splits
     else:
         print(f"\n[1/3] BUSI directory not found: {args.busi_dir}, skipping.")
 
@@ -290,9 +306,12 @@ def main():
         print(f"\n[2/3] Processing BUS from: {args.bus_dir}")
         ds_name, entries = process_bus(args.bus_dir, out_root)
         if entries:
+            rng.shuffle(entries)
             class_dict[ds_name] = 2
-            splits = write_split_files(out_root, ds_name, entries)
-            all_test[ds_name] = splits["test"]
+            splits = write_split_files(out_root, ds_name, entries,
+                                       train_ratio=args.train_ratio,
+                                       val_ratio=args.val_ratio)
+            all_splits[ds_name] = splits
     else:
         print(f"\n[2/3] BUS directory not found: {args.bus_dir}, skipping.")
 
@@ -301,9 +320,12 @@ def main():
         print(f"\n[3/3] Processing BUSBRA from: {args.busbra_dir}")
         ds_name, entries = process_busbra(args.busbra_dir, out_root)
         if entries:
+            rng.shuffle(entries)
             class_dict[ds_name] = 2
-            splits = write_split_files(out_root, ds_name, entries)
-            all_test[ds_name] = splits["test"]
+            splits = write_split_files(out_root, ds_name, entries,
+                                       train_ratio=args.train_ratio,
+                                       val_ratio=args.val_ratio)
+            all_splits[ds_name] = splits
     else:
         print(f"\n[3/3] BUSBRA directory not found: {args.busbra_dir}, skipping.")
 
@@ -313,24 +335,24 @@ def main():
     with open(os.path.join(main_dir, "class.json"), "w") as f:
         json.dump(class_dict, f, indent=4)
 
-    # Write combined test.txt (union of all datasets)
-    combined_test = []
-    for ds, names in all_test.items():
-        for name in names:
-            combined_test.append(f"{ds}/{name}")
-    with open(os.path.join(main_dir, "test.txt"), "w") as f:
-        for line in combined_test:
-            f.write(line + "\n")
-
-    # Also write empty train.txt and val.txt so the loader doesn't crash
-    for split in ["train", "val"]:
-        fpath = os.path.join(main_dir, f"{split}.txt")
-        if not os.path.exists(fpath):
-            open(fpath, "w").close()
+    # Write combined split files (union of all datasets)
+    for split_name in ["train", "val", "test"]:
+        combined = []
+        for ds, splits in all_splits.items():
+            for name in splits[split_name]:
+                if split_name == "test":
+                    combined.append(f"{ds}/{name}")
+                else:
+                    combined.append(f"1/{ds}/{name}")
+        with open(os.path.join(main_dir, f"{split_name}.txt"), "w") as f:
+            for line in combined:
+                f.write(line + "\n")
 
     print(f"\nDone! Processed data saved to: {os.path.abspath(out_root)}")
     print(f"  class.json: {class_dict}")
-    total = sum(len(v) for v in all_test.values())
+    for ds, splits in all_splits.items():
+        print(f"  {ds}: train={len(splits['train'])}, val={len(splits['val'])}, test={len(splits['test'])}")
+    total = sum(len(s["test"]) for s in all_splits.values())
     print(f"  Total test images: {total}")
     print()
 

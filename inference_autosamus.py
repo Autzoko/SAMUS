@@ -1,10 +1,10 @@
 """
-AutoSAMUS Inference Script for BUSI and BUS Datasets.
+SAMUS / AutoSAMUS Inference Script for BUSI, BUS, and BUSBRA Datasets.
 
 End-to-end pipeline:
   1. Load preprocessed data (output of preprocess_datasets.py)
-  2. Load pre-trained AutoSAMUS checkpoint
-  3. Run inference (no manual prompts needed — AutoSAMUS generates them automatically)
+  2. Load pre-trained checkpoint (SAMUS or AutoSAMUS)
+  3. Run inference
   4. Evaluate with Dice, IoU, Hausdorff Distance, Accuracy, Sensitivity, Specificity
   5. Save visualization overlays and raw prediction masks
 
@@ -12,7 +12,8 @@ Usage:
   python inference_autosamus.py \
       --data_path ./data/processed \
       --dataset Breast-BUSI-Ext \
-      --checkpoint ./checkpoints/AutoSAMUS.pth \
+      --checkpoint ./checkpoints/AutoSAMUS_best.pth \
+      --modelname AutoSAMUS \
       --output_dir ./results
 
 See RUN_INFERENCE.md for full instructions.
@@ -35,7 +36,7 @@ from torch.autograd import Variable
 from models.model_dict import get_model
 from utils.data_us import JointTransform2D, ImageToImage2D
 from utils.generate_prompts import get_click_prompt
-from utils.loss_functions.sam_loss import get_criterion
+from utils.loss_functions.sam_loss import Mask_DC_and_BCE_loss
 import utils.metrics as metrics
 from hausdorff import hausdorff_distance
 
@@ -66,7 +67,7 @@ class InferenceConfig:
         self.pre_trained = True
         self.mode = "val"  # triggers full metric reporting
         self.visual = args.visualize
-        self.modelname = "AutoSAMUS"
+        self.modelname = args.modelname
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -228,20 +229,23 @@ def run_evaluation(model, dataloader, opt, args, criterion):
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="AutoSAMUS Inference on BUSI/BUS")
+    parser = argparse.ArgumentParser(description="SAMUS/AutoSAMUS Inference on BUSI/BUS/BUSBRA")
     parser.add_argument("--data_path", type=str, default="./data/processed",
                         help="Root of the SAMUS-formatted dataset")
     parser.add_argument("--dataset", type=str, required=True,
                         choices=["Breast-BUSI-Ext", "Breast-BUS-Ext", "Breast-BUSBRA-Ext"],
                         help="Which dataset to run inference on")
     parser.add_argument("--checkpoint", type=str, required=True,
-                        help="Path to the AutoSAMUS .pth checkpoint")
+                        help="Path to the .pth checkpoint")
+    parser.add_argument("--modelname", type=str, default="AutoSAMUS",
+                        choices=["SAMUS", "AutoSAMUS"],
+                        help="Model type: SAMUS (with official checkpoint) or AutoSAMUS (with trained checkpoint)")
     parser.add_argument("--output_dir", type=str, default="./results",
                         help="Directory to save results")
     parser.add_argument("--batch_size", type=int, default=8,
                         help="Batch size for inference")
     parser.add_argument("--device", type=str, default=None,
-                        help="Device: cuda or cpu (auto-detected if omitted)")
+                        help="Device: cuda, mps, or cpu (auto-detected if omitted)")
     parser.add_argument("--visualize", action="store_true",
                         help="Save overlay visualizations")
     parser.add_argument("--encoder_input_size", type=int, default=256,
@@ -278,10 +282,11 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     print("=" * 70)
-    print(f"  AutoSAMUS Inference")
+    print(f"  {args.modelname} Inference")
     print(f"  Dataset     : {args.dataset}")
     print(f"  Data path   : {args.data_path}")
     print(f"  Checkpoint  : {args.checkpoint}")
+    print(f"  Model       : {args.modelname}")
     print(f"  Device      : {args.device}")
     print(f"  Batch size  : {args.batch_size}")
     print(f"  Visualize   : {args.visualize}")
@@ -326,20 +331,17 @@ def main():
     print(f"DataLoader ready: {len(val_dataset)} images, {len(dataloader)} batches\n")
 
     # ── Build model ──────────────────────────────────────────────────────
-    # AutoSAMUS loads the full checkpoint (encoder + prompt generator +
-    # decoder) directly via build_samus → _build_samus, which internally
-    # calls load_from_pretrained to handle multi-GPU prefix stripping.
-    print("Loading AutoSAMUS model...")
+    print(f"Loading {args.modelname} model...")
 
     # Create a namespace that get_model expects
     class ModelArgs:
         encoder_input_size = args.encoder_input_size
         low_image_size = args.low_image_size
-        sam_ckpt = args.checkpoint  # not used for AutoSAMUS, but keep for API
+        sam_ckpt = args.checkpoint  # used by SAMUS
         vit_name = "vit_b"
 
     model_args = ModelArgs()
-    model = get_model("AutoSAMUS", args=model_args, opt=opt)
+    model = get_model(args.modelname, args=model_args, opt=opt)
     model.to(args.device)
     model.eval()
 
@@ -349,7 +351,9 @@ def main():
     print(f"  Trainable parameters: {n_trainable:,}")
 
     # ── Loss function (for reporting val loss) ───────────────────────────
-    criterion = get_criterion(modelname="AutoSAMUS", opt=opt)
+    device = torch.device(args.device)
+    pos_weight = torch.ones([1], device=device) * 2
+    criterion = Mask_DC_and_BCE_loss(pos_weight=pos_weight)
 
     # ── Run inference + evaluation ───────────────────────────────────────
     print(f"\nRunning inference on {args.dataset}...")
@@ -376,6 +380,7 @@ def main():
     # ── Save results to JSON ─────────────────────────────────────────────
     summary = {
         "dataset": args.dataset,
+        "modelname": args.modelname,
         "checkpoint": args.checkpoint,
         "device": args.device,
         "stats": stats,
