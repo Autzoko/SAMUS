@@ -47,9 +47,16 @@ def main():
     parser.add_argument('--warmup', type=bool, default=False, help='If activated, warp up the learning from a lower lr to the base_lr') 
     parser.add_argument('--warmup_period', type=int, default=250, help='Warp up iterations, only valid whrn warmup is activated')
     parser.add_argument('-keep_log', type=bool, default=False, help='keep the loss&lr&dice during training or not')
+    parser.add_argument('--data_path', type=str, default=None, help='override opt.data_path from config')
+    parser.add_argument('--load_path', type=str, default=None, help='override opt.load_path (e.g., path to SAMUS checkpoint for AutoSAMUS init)')
+    parser.add_argument('--unfreeze_encoder', action='store_true', help='unfreeze SAMUS learnable parts in AutoSAMUS (adapters, CNN branch, upneck) for full AutoSAMUS training')
 
     args = parser.parse_args()
-    opt = get_config(args.task) 
+    opt = get_config(args.task)
+    if args.data_path is not None:
+        opt.data_path = args.data_path
+    if args.load_path is not None:
+        opt.load_path = args.load_path
 
     device = torch.device(opt.device)
     if args.keep_log:
@@ -85,6 +92,13 @@ def main():
     valloader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=8, pin_memory=True)
 
     model.to(device)
+    # For full AutoSAMUS: unfreeze SAMUS learnable parts (adapters, CNN branch, rel_pos, upneck)
+    if args.modelname == 'AutoSAMUS' and args.unfreeze_encoder:
+        for n, value in model.image_encoder.named_parameters():
+            if ("cnn_embed" in n or "post_pos_embed" in n or "Adapter" in n or
+                "2.attn.rel_pos" in n or "5.attn.rel_pos" in n or
+                "8.attn.rel_pos" in n or "11.attn.rel_pos" in n or "upneck" in n):
+                value.requires_grad = True
     if opt.pre_trained:
         checkpoint = torch.load(opt.load_path, map_location="cpu")
         new_state_dict = {}
@@ -103,7 +117,7 @@ def main():
         optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=b_lr, betas=(0.9, 0.999), weight_decay=0.1)
     else:
         b_lr = args.base_lr
-        optimizer = optim.Adam(model.parameters(), lr=args.base_lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.base_lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
    
     criterion = get_criterion(modelname=args.modelname, opt=opt)
 
