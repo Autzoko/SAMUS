@@ -1,13 +1,14 @@
 # Training & Inference Guide: SAMUS / AutoSAMUS
 
 Complete guide covering:
-1. **Training AutoSAMUS on US30K** (foundation model training from SAMUS checkpoint)
-2. **Fine-tuning AutoSAMUS on target datasets** (BUSI, BUS, BUSBRA)
-3. **Running inference** with SAMUS or AutoSAMUS
+1. **Training AutoSAMUS on downstream tasks** (BUSI, BUS, BUSBRA)
+2. **Running inference** with SAMUS or AutoSAMUS
 
 ---
 
 ## Background: SAMUS vs AutoSAMUS
+
+### Architecture Comparison
 
 | | SAMUS | AutoSAMUS- | AutoSAMUS (full) |
 |---|-------|------------|-------------------|
@@ -15,13 +16,17 @@ Complete guide covering:
 | **Extra modules** | None | `prompt_generator` + `feature_adapter` | `prompt_generator` + `feature_adapter` |
 | **Frozen** | prompt_encoder, mask_decoder | image_encoder, prompt_encoder, mask_decoder | prompt_encoder, mask_decoder |
 | **Trainable** | Image encoder adapters, CNN branch, upneck | APG + feature_adapter only (~8.86M) | APG + feature_adapter + SAMUS learnable parts |
-| **Checkpoint** | Official release | Trained from SAMUS | Trained from SAMUS |
 | **Flag** | `--modelname SAMUS` | `--modelname AutoSAMUS` | `--modelname AutoSAMUS --unfreeze_encoder` |
 
-**Training pipeline (from the paper):**
-1. Train SAMUS on US30K (already done -- official checkpoint provided)
-2. Load trained SAMUS into AutoSAMUS (shared weights: image encoder, prompt encoder, mask decoder)
-3. Fine-tune APG (`prompt_generator` + `feature_adapter`) on downstream tasks or the full US30K
+### Training Pipeline (from the paper)
+
+The paper describes a **two-stage** process:
+
+1. **Stage 1: Train SAMUS on US30K** -- Trains the image encoder adaptations (CNN branch, adapters, rel_pos, upneck) on the full US30K dataset (~30K images, 7 datasets). Uses manual click prompts. **This is already done -- the official SAMUS checkpoint is provided.**
+
+2. **Stage 2: Fine-tune AutoSAMUS on individual downstream tasks** -- Loads trained SAMUS weights into AutoSAMUS. The APG (`prompt_generator` + `feature_adapter`) replaces the manual prompt encoder and is trained from scratch on each target dataset separately.
+
+> **Important:** The paper does NOT train AutoSAMUS on US30K. AutoSAMUS is only fine-tuned on individual downstream tasks (DDTI, UDIAT, HMC-QU in the paper; BUSI, BUS, BUSBRA in our case). This is because US30K contains CAMUS multi-class data where the same image appears with 3 different target masks (LV, MYO, LA) -- AutoSAMUS has no prompt to disambiguate which structure to segment.
 
 ---
 
@@ -62,7 +67,7 @@ pip install -r requirements.txt
 
 ### 2. Download Checkpoints
 
-**SAMUS pre-trained checkpoint** (required for all AutoSAMUS training):
+**SAMUS pre-trained checkpoint** (required for AutoSAMUS training):
 
 - [SAMUS checkpoint (Google Drive)](https://drive.google.com/file/d/1nQjMAvbPeolNpCxQyU_HTiOiB5704pkH/view?usp=sharing)
 
@@ -79,121 +84,22 @@ mv ~/Downloads/SAMUS.pth checkpoints/SAMUS.pth
 mv ~/Downloads/sam_vit_b_01ec64.pth checkpoints/sam_vit_b_01ec64.pth
 ```
 
-### 3. Download US30K Dataset
-
-**Preprocessed US30K** (~30K ultrasound images, 7 public datasets):
-
-- [US30K (Google Drive)](https://drive.google.com/file/d/13MUXQIyCXqNscIKTLRIEHKtpak6MJby_/view?usp=sharing)
-
-Extract and note the path. Expected structure:
-
-```
-US30K/
-├── MainPatient/
-│   ├── class.json                          # {"Breast-BUSI": 2, "ThyroidNodule-TN3K": 2, ...}
-│   ├── train.txt                           # format: class_id/dataset/filename
-│   ├── val.txt
-│   ├── test.txt
-│   ├── train-Breast-BUSI.txt               # per-dataset splits
-│   ├── val-Breast-BUSI.txt
-│   ├── test-Breast-BUSI.txt
-│   ├── train-ThyroidNodule-TN3K.txt
-│   └── ...
-├── Breast-BUSI/
-│   ├── img/                                # grayscale PNGs
-│   └── label/                              # binary mask PNGs
-├── Breast-UDIAT/
-│   ├── img/
-│   └── label/
-├── ThyroidNodule-TN3K/
-│   ├── img/
-│   └── label/
-├── ThyroidNodule-DDTI/
-│   ├── img/
-│   └── label/
-├── ThyroidNodule-TG3K/
-│   ├── img/
-│   └── label/
-├── Echocardiography-CAMUS/
-│   ├── img/
-│   └── label/
-└── Echocardiography-HMCQU/
-    ├── img/
-    └── label/
-```
-
-The split files use two formats:
-- **Train/Val:** `class_id/dataset_folder/image_name` (e.g., `1/Breast-BUSI/benign0046`)
-- **Test:** `dataset_folder/image_name` (e.g., `Breast-BUSI/benign0031`)
-
 ---
 
-## Part A: Train AutoSAMUS on US30K
+## Part A: Train AutoSAMUS
 
-This trains AutoSAMUS as a foundation model on the full US30K dataset, starting from the SAMUS checkpoint.
+Two training methods are available. Choose based on your goal:
 
-### AutoSAMUS- (APG only, ~8.86M trainable params)
+| | Method 1: Per-Dataset | Method 2: US30K (no CAMUS) |
+|---|---|---|
+| **Task flag** | `--task BUSI_EXT` / `BUS_EXT` / `BUSBRA_EXT` | `--task US30K_NOCAMUS` |
+| **Training data** | Single target dataset (~100-500 images) | All US30K except CAMUS (~6,690 images) |
+| **Best for** | Max performance on that specific dataset | Zero-shot inference on unseen datasets |
+| **Generalization** | Low (task-specific) | Higher (multi-domain) |
 
-```bash
-python train.py \
-    --modelname AutoSAMUS \
-    --task US30K \
-    --data_path /path/to/US30K \
-    --load_path ./checkpoints/SAMUS.pth \
-    --batch_size 8 \
-    --base_lr 0.0005 \
-    -keep_log True
-```
+### Method 1: Train on a Single Downstream Dataset
 
-### AutoSAMUS (full, APG + SAMUS learnable parts)
-
-```bash
-python train.py \
-    --modelname AutoSAMUS \
-    --task US30K \
-    --data_path /path/to/US30K \
-    --load_path ./checkpoints/SAMUS.pth \
-    --unfreeze_encoder \
-    --batch_size 8 \
-    --base_lr 0.0005 \
-    -keep_log True
-```
-
-### What happens during training
-
-1. `get_model("AutoSAMUS", ...)` builds the model and loads SAMUS checkpoint via `load_from_pretrained()` (partial key matching -- shared keys loaded, APG + feature_adapter randomly initialized)
-2. AutoSAMUS freezes `image_encoder`, `prompt_encoder`, `mask_decoder`
-3. Only `prompt_generator` (~8.49M) + `feature_adapter` (~0.37M) are trained
-4. With `--unfreeze_encoder`: also unfreezes SAMUS adapters, CNN branch, relative position embeddings, and upneck
-5. Best checkpoint saved based on validation Dice score
-
-### Training output
-
-```
-checkpoints/SAMUS/
-├── AutoSAMUS_02091430_42_0.7856.pth   # Best model (date_epoch_dice)
-├── AutoSAMUS__0.pth                    # Epoch 0 save
-└── AutoSAMUS__199.pth                  # Final epoch
-```
-
-### Config reference (`Config_US30K` in `utils/config.py`)
-
-| Parameter | Value | Notes |
-|-----------|-------|-------|
-| `data_path` | `../../dataset/SAMUS/` | Override with `--data_path` |
-| `load_path` | placeholder | Override with `--load_path ./checkpoints/SAMUS.pth` |
-| `train_split` | `train` | Reads `MainPatient/train.txt` |
-| `val_split` | `val` | Reads `MainPatient/val.txt` |
-| `epochs` | 200 | |
-| `classes` | 2 | Binary segmentation |
-| `eval_mode` | `mask_slice` | Slice-level evaluation |
-| `save_path` | `./checkpoints/SAMUS/` | |
-
----
-
-## Part B: Fine-tune AutoSAMUS on Target Datasets (BUSI / BUS / BUSBRA)
-
-### Step 1: Preprocess Target Datasets
+#### Step 1a: Preprocess Target Datasets
 
 ```bash
 python preprocess_datasets.py \
@@ -228,7 +134,9 @@ data/processed/
     └── label/
 ```
 
-### Step 2: Train
+#### Step 1b: Train AutoSAMUS- (APG only, recommended first)
+
+Only the `prompt_generator` (~8.49M) + `feature_adapter` (~0.37M) are trainable. The entire SAMUS encoder/decoder is frozen.
 
 ```bash
 # BUSI
@@ -256,23 +164,108 @@ python train.py \
     -keep_log True
 ```
 
-> The `BUSI_EXT` / `BUS_EXT` / `BUSBRA_EXT` configs in `utils/config.py` already set `load_path = "./checkpoints/SAMUS.pth"`. If you trained AutoSAMUS on US30K first and want to use that checkpoint instead, pass `--load_path ./checkpoints/SAMUS/YOUR_US30K_BEST.pth`.
+#### Step 1c (Optional): Train AutoSAMUS full (APG + encoder parts)
 
-### Preprocessor options
+Add `--unfreeze_encoder` to also fine-tune the SAMUS learnable encoder parts (CNN branch, adapters, rel_pos embeddings, upneck). Uses differential learning rates: encoder parts get 10x lower lr to prevent corrupting the pre-trained weights.
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--busi_dir` | ... | Path to raw BUSI dataset |
-| `--bus_dir` | ... | Path to raw BUS dataset |
-| `--busbra_dir` | ... | Path to raw BUSBRA dataset |
-| `--output_dir` | `./data/processed` | Output directory |
-| `--train_ratio` | `0.7` | Fraction for training |
-| `--val_ratio` | `0.15` | Fraction for validation |
-| `--seed` | `42` | Shuffle seed for reproducible splits |
+```bash
+python train.py \
+    --modelname AutoSAMUS \
+    --task BUSI_EXT \
+    --unfreeze_encoder \
+    --batch_size 8 \
+    --base_lr 0.0001 \
+    -keep_log True
+```
 
 ---
 
-## Part C: Run Inference
+### Method 2: Train on US30K (minus CAMUS)
+
+This trains AutoSAMUS on all US30K datasets except CAMUS, creating a more general model. CAMUS is excluded because it has multi-class masks (LV/MYO/LA for the same image) which AutoSAMUS cannot disambiguate without a manual prompt.
+
+Remaining datasets after removing CAMUS (~6,690 train / ~1,098 val / ~2,402 test):
+- ThyroidNodule-TN3K, ThyroidNodule-TG3K
+- Breast-BUSI
+- Aponeurosis-FALLMUDRyan, Fascicle-FALLMUDRyan
+- Echocardiography-HMCQU (test only)
+- and others (test only)
+
+#### Step 2a: Generate Filtered Split Files
+
+```bash
+python prepare_us30k_no_camus.py --data_path ./US30K
+```
+
+This creates `train_no_camus.txt`, `val_no_camus.txt`, `test_no_camus.txt` in `US30K/MainPatient/`. Only needs to be run once.
+
+#### Step 2b: Train AutoSAMUS- (APG only)
+
+```bash
+python train.py \
+    --modelname AutoSAMUS \
+    --task US30K_NOCAMUS \
+    --data_path ./US30K \
+    --batch_size 8 \
+    --base_lr 0.0001 \
+    -keep_log True
+```
+
+#### Step 2c (Optional): Train AutoSAMUS full
+
+```bash
+python train.py \
+    --modelname AutoSAMUS \
+    --task US30K_NOCAMUS \
+    --data_path ./US30K \
+    --unfreeze_encoder \
+    --batch_size 8 \
+    --base_lr 0.0001 \
+    -keep_log True
+```
+
+---
+
+### What happens during training (both methods)
+
+1. `get_model("AutoSAMUS", ...)` builds the model and loads SAMUS checkpoint via `load_from_pretrained()` (shared keys loaded; APG + feature_adapter randomly initialized)
+2. AutoSAMUS freezes `image_encoder`, `prompt_encoder`, `mask_decoder`
+3. Only `prompt_generator` + `feature_adapter` are trained (AutoSAMUS-)
+4. With `--unfreeze_encoder`: also unfreezes SAMUS adapters, CNN branch, rel_pos, upneck (AutoSAMUS full)
+5. With `--unfreeze_encoder`: differential LR applied -- encoder params at `base_lr * 0.1`, new params at `base_lr`
+6. Best checkpoint saved based on validation Dice score
+
+### Training output
+
+```
+# Method 1
+checkpoints/BUSI_EXT/
+├── AutoSAMUS_02091430_42_0.7856.pth   # Best model (date_epoch_dice)
+├── AutoSAMUS__0.pth                    # Epoch 0 save
+└── AutoSAMUS__199.pth                  # Final epoch
+
+# Method 2
+checkpoints/US30K_NOCAMUS/
+├── AutoSAMUS_02091430_42_0.7856.pth
+├── AutoSAMUS__0.pth
+└── AutoSAMUS__199.pth
+```
+
+### Config reference (`utils/config.py`)
+
+| Parameter | BUSI_EXT | BUS_EXT | BUSBRA_EXT | US30K_NOCAMUS |
+|-----------|----------|---------|------------|---------------|
+| `data_path` | `./data/processed` | `./data/processed` | `./data/processed` | `./US30K` |
+| `load_path` | `./checkpoints/SAMUS.pth` | `./checkpoints/SAMUS.pth` | `./checkpoints/SAMUS.pth` | `./checkpoints/SAMUS.pth` |
+| `epochs` | 200 | 200 | 200 | 200 |
+| `classes` | 2 | 2 | 2 | 2 |
+| `eval_mode` | `mask_slice` | `mask_slice` | `mask_slice` | `mask_slice` |
+
+> Paper uses lr=1e-4 and 400 epochs for downstream fine-tuning. Our configs use 200 epochs as default; increase with `--epochs` if needed.
+
+---
+
+## Part B: Run Inference
 
 ### With AutoSAMUS (trained checkpoint)
 
@@ -346,12 +339,12 @@ results/
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--modelname` | `SAMUS` | Model: `SAM`, `SAMUS`, or `AutoSAMUS` |
-| `--task` | `US30K` | Config name: `US30K`, `TN3K`, `BUSI`, `CAMUS`, `BUSI_EXT`, `BUS_EXT`, `BUSBRA_EXT` |
+| `--task` | `US30K` | Config name: `US30K`, `TN3K`, `BUSI`, `CAMUS`, `BUSI_EXT`, `BUS_EXT`, `BUSBRA_EXT`, `US30K_NOCAMUS` |
 | `--data_path` | (from config) | Override dataset root path |
 | `--load_path` | (from config) | Override checkpoint path for model initialization |
 | `--unfreeze_encoder` | off | Unfreeze SAMUS learnable parts for full AutoSAMUS |
 | `--batch_size` | `8` | Batch size per GPU |
-| `--base_lr` | `0.0005` | Learning rate (use `0.0001` for fine-tuning) |
+| `--base_lr` | `0.0005` | Learning rate (use `0.0001` for downstream fine-tuning) |
 | `--n_gpu` | `1` | Number of GPUs |
 | `--warmup` | `False` | Enable learning rate warmup |
 | `--warmup_period` | `250` | Warmup iterations |
@@ -362,21 +355,13 @@ results/
 
 ## Quick-Start: Complete Pipeline
 
+### Option A: Per-dataset training (best accuracy on target dataset)
+
 ```bash
 cd "/path/to/SAMUS"
 conda activate SAMUS
 
-# ── 1. Train AutoSAMUS on US30K ──
-python train.py \
-    --modelname AutoSAMUS \
-    --task US30K \
-    --data_path /path/to/US30K \
-    --load_path ./checkpoints/SAMUS.pth \
-    --batch_size 8 \
-    --base_lr 0.0005 \
-    -keep_log True
-
-# ── 2. Preprocess target datasets ──
+# -- 1. Preprocess target datasets --
 python preprocess_datasets.py \
     --busi_dir   "/path/to/BUSI" \
     --bus_dir    "/path/to/BUS" \
@@ -385,16 +370,38 @@ python preprocess_datasets.py \
     --train_ratio 0.7 \
     --val_ratio 0.15
 
-# ── 3. Fine-tune AutoSAMUS on target datasets ──
+# -- 2. Train AutoSAMUS on downstream tasks (using SAMUS checkpoint) --
 python train.py --modelname AutoSAMUS --task BUSI_EXT --batch_size 8 --base_lr 0.0001 -keep_log True
 python train.py --modelname AutoSAMUS --task BUS_EXT --batch_size 8 --base_lr 0.0001 -keep_log True
 python train.py --modelname AutoSAMUS --task BUSBRA_EXT --batch_size 8 --base_lr 0.0001 -keep_log True
 
-# ── 4. Run inference ──
+# -- 3. Run inference --
 python inference_autosamus.py \
     --data_path ./data/processed \
     --dataset Breast-BUSI-Ext \
     --checkpoint ./checkpoints/BUSI_EXT/YOUR_BEST.pth \
+    --modelname AutoSAMUS \
+    --output_dir ./results \
+    --visualize
+```
+
+### Option B: US30K foundation model (better generalization to unseen datasets)
+
+```bash
+cd "/path/to/SAMUS"
+conda activate SAMUS
+
+# -- 1. Generate filtered split files (one-time) --
+python prepare_us30k_no_camus.py --data_path ./US30K
+
+# -- 2. Train AutoSAMUS on US30K minus CAMUS --
+python train.py --modelname AutoSAMUS --task US30K_NOCAMUS --data_path ./US30K --batch_size 8 --base_lr 0.0001 -keep_log True
+
+# -- 3. Run inference on any dataset --
+python inference_autosamus.py \
+    --data_path ./data/processed \
+    --dataset Breast-BUSI-Ext \
+    --checkpoint ./checkpoints/US30K_NOCAMUS/YOUR_BEST.pth \
     --modelname AutoSAMUS \
     --output_dir ./results \
     --visualize
@@ -425,9 +432,11 @@ python inference_autosamus.py \
 | `ModuleNotFoundError: No module named 'batchgenerators'` | `pip install batchgenerators==0.25` |
 | `ModuleNotFoundError: No module named 'numba'` | `pip install numba>=0.57` |
 | `CUDA out of memory` | Reduce `--batch_size` to 2 or 1 |
-| `Split file not found` | Run `preprocess_datasets.py` first (for target datasets) or check `--data_path` (for US30K) |
+| `Split file not found` | Run `preprocess_datasets.py` first or check `--data_path` |
 | `RuntimeError: expected ... got ...` on MPS | Use `--device cpu` (MPS may lack some ops) |
-| `FileNotFoundError` on checkpoint | Check `--load_path` points to the SAMUS checkpoint |
+| `FileNotFoundError` on checkpoint | Check `--load_path` points to `./checkpoints/SAMUS.pth` |
 | Checkpoint key mismatch | `load_from_pretrained()` handles `module.` prefix stripping and partial loading automatically |
-| Training loss not decreasing | Verify `--load_path` or config `load_path` points to `./checkpoints/SAMUS.pth` |
+| Training loss not decreasing | Verify config `load_path` points to `./checkpoints/SAMUS.pth` |
+| Low val dice on US30K | AutoSAMUS should NOT be trained on US30K (CAMUS multi-class conflict); use downstream task configs instead |
 | Empty train/val splits | Re-run `preprocess_datasets.py` with `--train_ratio 0.7 --val_ratio 0.15` |
+| `Split file not found` for US30K_NOCAMUS | Run `python prepare_us30k_no_camus.py --data_path ./US30K` first |

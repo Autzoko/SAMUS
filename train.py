@@ -112,12 +112,36 @@ def main():
     if args.n_gpu > 1:
         model = nn.DataParallel(model)
     
+    # Build parameter groups: use differential lr when --unfreeze_encoder is set
+    # Pre-trained encoder parts get 10x lower lr to avoid corruption from random APG gradients
+    if args.modelname == 'AutoSAMUS' and args.unfreeze_encoder:
+        encoder_params = []
+        new_params = []
+        for n, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            if 'image_encoder' in n:
+                encoder_params.append(p)
+            else:
+                new_params.append(p)
+        print(f"Differential LR: {len(encoder_params)} encoder params (lr={args.base_lr*0.1:.6f}), "
+              f"{len(new_params)} new params (lr={args.base_lr:.6f})")
+        param_groups = [
+            {'params': new_params, 'lr': args.base_lr, 'initial_lr': args.base_lr},
+            {'params': encoder_params, 'lr': args.base_lr * 0.1, 'initial_lr': args.base_lr * 0.1},
+        ]
+    else:
+        param_groups = [{'params': filter(lambda p: p.requires_grad, model.parameters()),
+                         'lr': args.base_lr, 'initial_lr': args.base_lr}]
+
     if args.warmup:
         b_lr = args.base_lr / args.warmup_period
-        optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=b_lr, betas=(0.9, 0.999), weight_decay=0.1)
+        for pg in param_groups:
+            pg['lr'] = pg['initial_lr'] / args.warmup_period
+        optimizer = torch.optim.AdamW(param_groups, lr=b_lr, betas=(0.9, 0.999), weight_decay=0.1)
     else:
         b_lr = args.base_lr
-        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.base_lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+        optimizer = optim.Adam(param_groups, lr=args.base_lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
    
     criterion = get_criterion(modelname=args.modelname, opt=opt)
 
@@ -148,16 +172,16 @@ def main():
             print(f'\r  batch [{batch_idx+1}/{len(trainloader)}] loss: {train_loss.item():.4f}', end='', flush=True)
             # ------------------------------------------- adjust the learning rate when needed-----------------------------------------
             if args.warmup and iter_num < args.warmup_period:
-                lr_ = args.base_lr * ((iter_num + 1) / args.warmup_period)
+                scale = (iter_num + 1) / args.warmup_period
                 for param_group in optimizer.param_groups:
-                    param_group['lr'] = lr_
+                    param_group['lr'] = param_group.get('initial_lr', args.base_lr) * scale
             else:
                 if args.warmup:
                     shift_iter = iter_num - args.warmup_period
                     assert shift_iter >= 0, f'Shift iter is {shift_iter}, smaller than zero'
-                    lr_ = args.base_lr * (1.0 - shift_iter / max_iterations) ** 0.9  # learning rate adjustment depends on the max iterations
+                    scale = (1.0 - shift_iter / max_iterations) ** 0.9
                     for param_group in optimizer.param_groups:
-                        param_group['lr'] = lr_
+                        param_group['lr'] = param_group.get('initial_lr', args.base_lr) * scale
             iter_num = iter_num + 1
 
         #  -------------------------------------------------- log the train progress --------------------------------------------------
