@@ -57,6 +57,10 @@ def main():
         opt.data_path = args.data_path
     if args.load_path is not None:
         opt.load_path = args.load_path
+    if args.modelname == 'AutoSAMUS' and args.unfreeze_encoder:
+        opt.save_path = opt.save_path.rstrip('/') + '_full/'
+        opt.result_path = opt.result_path.rstrip('/') + '_full/'
+        opt.tensorboard_path = opt.tensorboard_path.rstrip('/') + '_full/'
 
     device = torch.device(opt.device)
     if args.keep_log:
