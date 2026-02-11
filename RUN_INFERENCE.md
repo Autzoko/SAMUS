@@ -409,6 +409,73 @@ python inference_autosamus.py \
 
 ---
 
+## Part C: Comprehensive Evaluation
+
+`evaluate.py` evaluates one or more checkpoints on both in-distribution (BUSI from US30K) and out-of-distribution (BUSBRA, unseen) data, producing a comparison table.
+
+### Evaluate SAMUS baseline
+
+```bash
+python evaluate.py \
+    --checkpoints ./checkpoints/SAMUS.pth \
+    --labels SAMUS_baseline \
+    --modelname SAMUS \
+    --busi_data_path ./US30K \
+    --busbra_raw "/path/to/BUSBRA" \
+    --output_dir ./eval_results \
+    --visualize
+```
+
+### Compare multiple AutoSAMUS checkpoints
+
+```bash
+python evaluate.py \
+    --checkpoints \
+        ./checkpoints/BUSI_EXT/best.pth \
+        ./checkpoints/US30K_NOCAMUS/best.pth \
+    --labels "BUSI_APG" "US30K_APG" \
+    --modelname AutoSAMUS \
+    --busi_data_path ./US30K \
+    --busbra_raw "/path/to/BUSBRA" \
+    --output_dir ./eval_results
+```
+
+### Evaluation output
+
+```
+eval_results/
+├── summary.json              # All results in structured JSON
+├── comparison.csv            # Comparison table (checkpoint x dataset x metrics)
+├── .busbra_eval/             # Preprocessed BUSBRA data (auto-generated, cached)
+├── BUSI_APG/
+│   ├── Breast-BUSI/
+│   │   ├── per_image_metrics.csv
+│   │   └── vis/              # If --visualize
+│   └── Breast-BUSBRA-Raw/
+│       ├── per_image_metrics.csv
+│       └── vis/
+└── US30K_APG/
+    ├── Breast-BUSI/
+    └── Breast-BUSBRA-Raw/
+```
+
+### Evaluate options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--checkpoints` | (required) | One or more `.pth` files |
+| `--labels` | (auto) | Human-readable name per checkpoint |
+| `--modelname` | `AutoSAMUS` | `SAMUS` or `AutoSAMUS` |
+| `--busi_data_path` | `./US30K` | Path containing Breast-BUSI test data |
+| `--no_busi` | off | Skip BUSI evaluation |
+| `--busbra_raw` | (none) | Path to raw BUSBRA dataset (auto-preprocessed) |
+| `--output_dir` | `./eval_results` | Where to save results |
+| `--batch_size` | `8` | Batch size |
+| `--device` | auto | `cuda`, `mps`, or `cpu` |
+| `--visualize` | off | Save overlay images |
+
+---
+
 ## Evaluation Metrics
 
 | Metric | Formula | Range |
