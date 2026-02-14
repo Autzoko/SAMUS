@@ -130,6 +130,195 @@ class Config_CAMUS:
     visual = False
     modelname = "SAM"
 
+# -------------------------------------------------------------------------------------------------
+class Config_AllBreast:
+    # Combined training on all 5 breast ultrasound datasets
+    data_path = "./SAMUS_DATA/"
+    save_path = "./checkpoints/AllBreast/"
+    result_path = "./result/AllBreast/"
+    tensorboard_path = "./tensorboard/AllBreast/"
+    load_path = "./checkpoints/samus_pretrained.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 400
+    batch_size = 8
+    learning_rate = 5e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-AllBreast"
+    val_split = "val-AllBreast"
+    test_split = "val-AllBreast"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "AutoSAMUS"
+
+class Config_BreastBUSI:
+    # BUSI dataset only (for per-dataset training/eval)
+    data_path = "./SAMUS_DATA/"
+    save_path = "./checkpoints/BreastBUSI/"
+    result_path = "./result/BreastBUSI/"
+    tensorboard_path = "./tensorboard/BreastBUSI/"
+    load_path = "./checkpoints/samus_pretrained.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 400
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-BUSI"
+    val_split = "val-BUSI"
+    test_split = "val-BUSI"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "AutoSAMUS"
+
+class Config_BreastBUSBRA:
+    data_path = "./SAMUS_DATA/"
+    save_path = "./checkpoints/BreastBUSBRA/"
+    result_path = "./result/BreastBUSBRA/"
+    tensorboard_path = "./tensorboard/BreastBUSBRA/"
+    load_path = "./checkpoints/samus_pretrained.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 400
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-BUSBRA"
+    val_split = "val-BUSBRA"
+    test_split = "val-BUSBRA"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "AutoSAMUS"
+
+class Config_BreastBUS:
+    data_path = "./SAMUS_DATA/"
+    save_path = "./checkpoints/BreastBUS/"
+    result_path = "./result/BreastBUS/"
+    tensorboard_path = "./tensorboard/BreastBUS/"
+    load_path = "./checkpoints/samus_pretrained.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 400
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-BUS"
+    val_split = "val-BUS"
+    test_split = "val-BUS"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "AutoSAMUS"
+
+class Config_BreastBUS_UC:
+    data_path = "./SAMUS_DATA/"
+    save_path = "./checkpoints/BreastBUS_UC/"
+    result_path = "./result/BreastBUS_UC/"
+    tensorboard_path = "./tensorboard/BreastBUS_UC/"
+    load_path = "./checkpoints/samus_pretrained.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 400
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-BUS_UC"
+    val_split = "val-BUS_UC"
+    test_split = "val-BUS_UC"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "AutoSAMUS"
+
+class Config_BreastBUS_UCLM:
+    data_path = "./SAMUS_DATA/"
+    save_path = "./checkpoints/BreastBUS_UCLM/"
+    result_path = "./result/BreastBUS_UCLM/"
+    tensorboard_path = "./tensorboard/BreastBUS_UCLM/"
+    load_path = "./checkpoints/samus_pretrained.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 400
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-BUS_UCLM"
+    val_split = "val-BUS_UCLM"
+    test_split = "val-BUS_UCLM"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "AutoSAMUS"
+
 # ==================================================================================================
 def get_config(task="US30K"):
     if task == "US30K":
@@ -140,5 +329,17 @@ def get_config(task="US30K"):
         return Config_BUSI()
     elif task == "CAMUS":
         return Config_CAMUS()
+    elif task == "AllBreast":
+        return Config_AllBreast()
+    elif task == "BreastBUSI":
+        return Config_BreastBUSI()
+    elif task == "BreastBUSBRA":
+        return Config_BreastBUSBRA()
+    elif task == "BreastBUS":
+        return Config_BreastBUS()
+    elif task == "BreastBUS_UC":
+        return Config_BreastBUS_UC()
+    elif task == "BreastBUS_UCLM":
+        return Config_BreastBUS_UCLM()
     else:
         assert("We do not have the related dataset, please choose another task.")
