@@ -105,7 +105,7 @@ def _build_samus(
     samus.eval()
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
-            state_dict = torch.load(f)
+            state_dict = torch.load(f, map_location="cpu")
         try:
             samus.load_state_dict(state_dict)
         except:

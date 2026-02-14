@@ -1,6 +1,7 @@
 from ast import arg
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = os.environ.get("CUDA_VISIBLE_DEVICES", "0")
+if "CUDA_VISIBLE_DEVICES" not in os.environ:
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 import argparse
 from pickle import FALSE, TRUE
 from statistics import mode
@@ -46,9 +47,20 @@ def main():
     parser.add_argument('--warmup', type=bool, default=False, help='If activated, warp up the learning from a lower lr to the base_lr') 
     parser.add_argument('--warmup_period', type=int, default=250, help='Warp up iterations, only valid whrn warmup is activated')
     parser.add_argument('-keep_log', type=bool, default=False, help='keep the loss&lr&dice during training or not')
+    parser.add_argument('--data_path', type=str, default=None, help='override opt.data_path from config')
+    parser.add_argument('--load_path', type=str, default=None, help='override opt.load_path (e.g., path to SAMUS checkpoint for AutoSAMUS init)')
+    parser.add_argument('--unfreeze_encoder', action='store_true', help='unfreeze SAMUS learnable parts in AutoSAMUS (adapters, CNN branch, upneck) for full AutoSAMUS training')
 
     args = parser.parse_args()
-    opt = get_config(args.task) 
+    opt = get_config(args.task)
+    if args.data_path is not None:
+        opt.data_path = args.data_path
+    if args.load_path is not None:
+        opt.load_path = args.load_path
+    if args.modelname == 'AutoSAMUS' and args.unfreeze_encoder:
+        opt.save_path = opt.save_path.rstrip('/') + '_full/'
+        opt.result_path = opt.result_path.rstrip('/') + '_full/'
+        opt.tensorboard_path = opt.tensorboard_path.rstrip('/') + '_full/'
 
     device = torch.device(opt.device)
     if args.keep_log:
@@ -84,8 +96,15 @@ def main():
     valloader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=8, pin_memory=True)
 
     model.to(device)
+    # For full AutoSAMUS: unfreeze SAMUS learnable parts (adapters, CNN branch, rel_pos, upneck)
+    if args.modelname == 'AutoSAMUS' and args.unfreeze_encoder:
+        for n, value in model.image_encoder.named_parameters():
+            if ("cnn_embed" in n or "post_pos_embed" in n or "Adapter" in n or
+                "2.attn.rel_pos" in n or "5.attn.rel_pos" in n or
+                "8.attn.rel_pos" in n or "11.attn.rel_pos" in n or "upneck" in n):
+                value.requires_grad = True
     if opt.pre_trained:
-        checkpoint = torch.load(opt.load_path)
+        checkpoint = torch.load(opt.load_path, map_location="cpu")
         new_state_dict = {}
         for k,v in checkpoint.items():
             if k[:7] == 'module.':
@@ -97,12 +116,36 @@ def main():
     if args.n_gpu > 1:
         model = nn.DataParallel(model)
     
+    # Build parameter groups: use differential lr when --unfreeze_encoder is set
+    # Pre-trained encoder parts get 10x lower lr to avoid corruption from random APG gradients
+    if args.modelname == 'AutoSAMUS' and args.unfreeze_encoder:
+        encoder_params = []
+        new_params = []
+        for n, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            if 'image_encoder' in n:
+                encoder_params.append(p)
+            else:
+                new_params.append(p)
+        print(f"Differential LR: {len(encoder_params)} encoder params (lr={args.base_lr*0.1:.6f}), "
+              f"{len(new_params)} new params (lr={args.base_lr:.6f})")
+        param_groups = [
+            {'params': new_params, 'lr': args.base_lr, 'initial_lr': args.base_lr},
+            {'params': encoder_params, 'lr': args.base_lr * 0.1, 'initial_lr': args.base_lr * 0.1},
+        ]
+    else:
+        param_groups = [{'params': filter(lambda p: p.requires_grad, model.parameters()),
+                         'lr': args.base_lr, 'initial_lr': args.base_lr}]
+
     if args.warmup:
         b_lr = args.base_lr / args.warmup_period
-        optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=b_lr, betas=(0.9, 0.999), weight_decay=0.1)
+        for pg in param_groups:
+            pg['lr'] = pg['initial_lr'] / args.warmup_period
+        optimizer = torch.optim.AdamW(param_groups, lr=b_lr, betas=(0.9, 0.999), weight_decay=0.1)
     else:
         b_lr = args.base_lr
-        optimizer = optim.Adam(model.parameters(), lr=args.base_lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+        optimizer = optim.Adam(param_groups, lr=args.base_lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
    
     criterion = get_criterion(modelname=args.modelname, opt=opt)
 
@@ -130,23 +173,23 @@ def main():
             train_loss.backward()
             optimizer.step()
             train_losses += train_loss.item()
-            print(train_loss)
+            print(f'\r  batch [{batch_idx+1}/{len(trainloader)}] loss: {train_loss.item():.4f}', end='', flush=True)
             # ------------------------------------------- adjust the learning rate when needed-----------------------------------------
             if args.warmup and iter_num < args.warmup_period:
-                lr_ = args.base_lr * ((iter_num + 1) / args.warmup_period)
+                scale = (iter_num + 1) / args.warmup_period
                 for param_group in optimizer.param_groups:
-                    param_group['lr'] = lr_
+                    param_group['lr'] = param_group.get('initial_lr', args.base_lr) * scale
             else:
                 if args.warmup:
                     shift_iter = iter_num - args.warmup_period
                     assert shift_iter >= 0, f'Shift iter is {shift_iter}, smaller than zero'
-                    lr_ = args.base_lr * (1.0 - shift_iter / max_iterations) ** 0.9  # learning rate adjustment depends on the max iterations
+                    scale = (1.0 - shift_iter / max_iterations) ** 0.9
                     for param_group in optimizer.param_groups:
-                        param_group['lr'] = lr_
+                        param_group['lr'] = param_group.get('initial_lr', args.base_lr) * scale
             iter_num = iter_num + 1
 
         #  -------------------------------------------------- log the train progress --------------------------------------------------
-        print('epoch [{}/{}], train loss:{:.4f}'.format(epoch, opt.epochs, train_losses / (batch_idx + 1)))
+        print(f'\repoch [{epoch}/{opt.epochs}], train loss: {train_losses / (batch_idx + 1):.4f}, lr: {optimizer.param_groups[0]["lr"]:.6f}')
         if args.keep_log:
             TensorWriter.add_scalar('train_loss', train_losses / (batch_idx + 1), epoch)
             TensorWriter.add_scalar('learning rate', optimizer.state_dict()['param_groups'][0]['lr'], epoch)

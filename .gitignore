@@ -1,0 +1,29 @@
+# Data & checkpoints (too large for git)
+data/
+checkpoints/
+result/
+results/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Tensorboard
+tensorboard/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Claude Code local settings
+.claude/

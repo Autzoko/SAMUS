@@ -131,6 +131,138 @@ class Config_CAMUS:
     modelname = "SAM"
 
 # -------------------------------------------------------------------------------------------------
+class Config_BUSI_Ext:
+    data_path = "./data/processed"
+    data_subpath = "./data/processed/Breast-BUSI-Ext/"
+    save_path = "./checkpoints/BUSI_EXT/"
+    result_path = "./result/BUSI_EXT/"
+    tensorboard_path = "./tensorboard/BUSI_EXT/"
+    load_path = "./checkpoints/SAMUS.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 200
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-Breast-BUSI-Ext"
+    val_split = "val-Breast-BUSI-Ext"
+    test_split = "test-Breast-BUSI-Ext"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "SAM"
+
+class Config_BUS_Ext:
+    data_path = "./data/processed"
+    data_subpath = "./data/processed/Breast-BUS-Ext/"
+    save_path = "./checkpoints/BUS_EXT/"
+    result_path = "./result/BUS_EXT/"
+    tensorboard_path = "./tensorboard/BUS_EXT/"
+    load_path = "./checkpoints/SAMUS.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 200
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-Breast-BUS-Ext"
+    val_split = "val-Breast-BUS-Ext"
+    test_split = "test-Breast-BUS-Ext"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "SAM"
+
+class Config_BUSBRA_Ext:
+    data_path = "./data/processed"
+    data_subpath = "./data/processed/Breast-BUSBRA-Ext/"
+    save_path = "./checkpoints/BUSBRA_EXT/"
+    result_path = "./result/BUSBRA_EXT/"
+    tensorboard_path = "./tensorboard/BUSBRA_EXT/"
+    load_path = "./checkpoints/SAMUS.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 200
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-Breast-BUSBRA-Ext"
+    val_split = "val-Breast-BUSBRA-Ext"
+    test_split = "test-Breast-BUSBRA-Ext"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "SAM"
+
+class Config_US30K_NoCamus:
+    # US30K with CAMUS excluded -- for AutoSAMUS foundation-model training.
+    # CAMUS has multi-class masks (LV/MYO/LA) for the same image; AutoSAMUS
+    # cannot disambiguate without a manual prompt, so we exclude it.
+    # Run prepare_us30k_no_camus.py first to generate the filtered split files.
+    data_path = "./US30K"
+    save_path = "./checkpoints/US30K_NOCAMUS/"
+    result_path = "./result/US30K_NOCAMUS/"
+    tensorboard_path = "./tensorboard/US30K_NOCAMUS/"
+    load_path = "./checkpoints/SAMUS.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 200
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train_no_camus"
+    val_split = "val_no_camus"
+    test_split = "test_no_camus"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "SAM"
+
+# -------------------------------------------------------------------------------------------------
 class Config_AllBreast:
     # Combined training on all 5 breast ultrasound datasets
     data_path = "./SAMUS_DATA/"
@@ -329,6 +461,14 @@ def get_config(task="US30K"):
         return Config_BUSI()
     elif task == "CAMUS":
         return Config_CAMUS()
+    elif task == "BUSI_EXT":
+        return Config_BUSI_Ext()
+    elif task == "BUS_EXT":
+        return Config_BUS_Ext()
+    elif task == "BUSBRA_EXT":
+        return Config_BUSBRA_Ext()
+    elif task == "US30K_NOCAMUS":
+        return Config_US30K_NoCamus()
     elif task == "AllBreast":
         return Config_AllBreast()
     elif task == "BreastBUSI":
