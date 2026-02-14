@@ -56,6 +56,79 @@ Do not forget to set the load_path in [./utils/config.py](https://github.com/xia
 python test.py --modelname SAMUS --task <your dataset config name>
 ```
 
+## AutoSAMUS on Breast Ultrasound Datasets
+
+Train AutoSAMUS (prompt-free variant) on 5 breast ultrasound datasets: BUSI, BUSBRA, BUS, BUS\_UC, BUS\_UCLM.
+
+### 1. Preprocess Data
+
+Convert breast datasets from UltraSAM COCO format to SAMUS format (256x256 grayscale):
+
+```bash
+python scripts/preprocess_breast_for_samus.py \
+    --ultrasam-data ../UltraSam/UltraSAM_DATA \
+    --save-dir SAMUS_DATA
+```
+
+This creates `SAMUS_DATA/` with split files in `MainPatient/` (2705 train, 678 val).
+
+### 2. Download Pretrained SAMUS Checkpoint
+
+```bash
+mkdir -p checkpoints
+pip install gdown
+gdown 1nQjMAvbPeolNpCxQyU_HTiOiB5704pkH -O checkpoints/samus_pretrained.pth
+```
+
+### 3. Train
+
+**Train on all 5 breast datasets combined:**
+```bash
+python train.py \
+    --modelname AutoSAMUS \
+    --task AllBreast \
+    --batch_size 8 \
+    --base_lr 0.0005 \
+    --warmup True --warmup_period 250 \
+    -keep_log True
+```
+
+**Train on a single dataset:**
+```bash
+# Available tasks: BreastBUSI, BreastBUSBRA, BreastBUS, BreastBUS_UC, BreastBUS_UCLM
+python train.py \
+    --modelname AutoSAMUS \
+    --task BreastBUSI \
+    --batch_size 8 \
+    --base_lr 0.0001 \
+    --warmup True --warmup_period 250 \
+    -keep_log True
+```
+
+**SLURM (NYU Greene HPC):**
+```bash
+sbatch scripts/sbatch_train_autosamus_allbreast.sh
+```
+
+Checkpoints are saved to `checkpoints/AllBreast/` (or `checkpoints/Breast<DATASET>/` for per-dataset).
+
+### 4. Evaluate
+
+```bash
+python scripts/eval_autosamus_breast.py \
+    --checkpoint checkpoints/AllBreast/AutoSAMUS_best.pth \
+    --data-root SAMUS_DATA \
+    --eval-datasets BUSI BUSBRA BUS BUS_UC BUS_UCLM \
+    --save-json result/AllBreast/eval_results.json
+```
+
+Reports per-dataset and combined metrics: Dice, IoU, HD95, ASD, Precision, Recall, Specificity, Accuracy.
+
+**SLURM:**
+```bash
+sbatch scripts/sbatch_eval_autosamus.sh checkpoints/AllBreast/AutoSAMUS_best.pth
+```
+
 ## Citation
 If our SAMUS is helpful to you, please consider citing:
 ```
