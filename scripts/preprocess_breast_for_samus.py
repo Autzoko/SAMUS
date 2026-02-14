@@ -45,7 +45,7 @@ DS_DIR_MAP = {
     'BUSBRA': ('BUSBRA', 'BUSBRA'),
     'BUS': ('BUS', 'BUS'),
     'BUS_UC': ('BUS_UC', 'BUS_UC'),
-    'BUS_UCLM': ('BUS-UCLM', 'BUS-UCLM'),  # hyphen in UltraSAM
+    'BUS_UCLM': ('BUS_UCLM', 'BUS_UCLM'),
 }
 
 
