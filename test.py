@@ -60,7 +60,7 @@ def main():
     print("task", args.task, "checkpoints:", opt.load_path)
     opt.mode = "val"
     #opt.classes=2
-    opt.visual = True
+    opt.visual = False
     #opt.eval_mode = "patient"
     opt.modelname = args.modelname
     device = torch.device(opt.device)
