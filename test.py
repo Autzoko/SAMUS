@@ -1,6 +1,7 @@
 from ast import arg
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+if "CUDA_VISIBLE_DEVICES" not in os.environ:
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 import argparse
 from pickle import FALSE, TRUE
 from statistics import mode
@@ -47,9 +48,15 @@ def main():
     parser.add_argument('--warmup', type=bool, default=False, help='If activated, warp up the learning from a lower lr to the base_lr') # True
     parser.add_argument('--warmup_period', type=int, default=250, help='Warp up iterations, only valid whrn warmup is activated')
     parser.add_argument('-keep_log', type=bool, default=False, help='keep the loss&lr&dice during training or not')
+    parser.add_argument('--data_path', type=str, default=None, help='override opt.data_path from config')
+    parser.add_argument('--load_path', type=str, default=None, help='override opt.load_path (path to trained checkpoint)')
 
     args = parser.parse_args()
     opt = get_config(args.task)  # please configure your hyper-parameter
+    if args.data_path is not None:
+        opt.data_path = args.data_path
+    if args.load_path is not None:
+        opt.load_path = args.load_path
     print("task", args.task, "checkpoints:", opt.load_path)
     opt.mode = "val"
     #opt.classes=2
