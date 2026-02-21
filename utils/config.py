@@ -451,6 +451,37 @@ class Config_BreastBUS_UCLM:
     visual = False
     modelname = "AutoSAMUS"
 
+class Config_BreastUDIAT:
+    data_path = "./SAMUS_DATA/"
+    save_path = "./checkpoints/BreastUDIAT/"
+    result_path = "./result/BreastUDIAT/"
+    tensorboard_path = "./tensorboard/BreastUDIAT/"
+    load_path = "./checkpoints/samus_pretrained.pth"
+    save_path_code = "_"
+
+    workers = 1
+    epochs = 400
+    batch_size = 8
+    learning_rate = 1e-4
+    momentum = 0.9
+    classes = 2
+    img_size = 256
+    train_split = "train-UDIAT"
+    val_split = "val-UDIAT"
+    test_split = "val-UDIAT"
+    crop = None
+    eval_freq = 1
+    save_freq = 2000
+    device = "cuda"
+    cuda = "on"
+    gray = "yes"
+    img_channel = 1
+    eval_mode = "mask_slice"
+    pre_trained = False
+    mode = "train"
+    visual = False
+    modelname = "AutoSAMUS"
+
 class Config_BreastBUSI_BUSBRA:
     # Combined BUSI + BUSBRA training (for baseline AutoSAMUS comparison)
     # Split files: train-BUSI_BUSBRA.txt, val-BUSI_BUSBRA.txt
@@ -515,6 +546,8 @@ def get_config(task="US30K"):
         return Config_BreastBUS_UC()
     elif task == "BreastBUS_UCLM":
         return Config_BreastBUS_UCLM()
+    elif task == "BreastUDIAT":
+        return Config_BreastUDIAT()
     elif task == "BreastBUSI_BUSBRA":
         return Config_BreastBUSI_BUSBRA()
     else:
